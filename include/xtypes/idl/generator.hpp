@@ -24,6 +24,7 @@
 #include <xtypes/SequenceType.hpp>
 #include <xtypes/EnumerationType.hpp>
 #include <xtypes/AliasType.hpp>
+#include <xtypes/idl/generator_deptree.hpp>
 
 #include <sstream>
 
@@ -208,7 +209,7 @@ inline size_t inherit_members(const AggregationType& type)
     return 0;
 }
 
-inline std::string structure(const StructType& type, size_t tabs = 0)
+inline std::string structure(const StructType& type, size_t tabs)
 {
     std::stringstream ss;
     ss << std::string(tabs * 4, ' ') << "struct " << type.name();
@@ -236,7 +237,7 @@ inline std::string structure(const StructType& type, size_t tabs = 0)
     return ss.str();
 }
 
-inline std::string generate_union(const UnionType& type, size_t tabs = 0)
+inline std::string generate_union(const UnionType& type, size_t tabs)
 {
     std::stringstream ss;
     ss << std::string(tabs * 4, ' ') << "union " << type.name()
@@ -290,7 +291,7 @@ inline std::string aliase(const DynamicType& type, const std::string& name)
     return ss.str();
 }
 
-inline std::string enumeration32(const EnumerationType<uint32_t>& enumeration, size_t tabs = 0)
+inline std::string enumeration32(const EnumerationType<uint32_t>& enumeration, size_t tabs)
 {
     std::stringstream ss;
     // We must add them in order
@@ -349,77 +350,6 @@ inline std::string get_const_value(ReadableDynamicDataRef data)
     }
 
     ss << prefix << data.cast<std::string>() << suffix;
-
-    return ss.str();
-}
-
-// TODO: module_contents (and maybe module) should generate a dependency tree and resolve them in the generated IDL,
-// including maybe the need of forward declarations.
-inline std::string module_contents(const Module& module_, size_t tabs = 0)
-{
-    std::stringstream ss;
-
-    // Aliases
-    for (const auto& alias : module_.aliases_)
-    {
-        ss << std::string(tabs * 4, ' ') << aliase(static_cast<const AliasType&>(*alias.second).get(), alias.first);
-    }
-    // Enums
-    for (const auto& pair : module_.enumerations_32_)
-    {
-        const EnumerationType<uint32_t>& enum_type = static_cast<const EnumerationType<uint32_t>&>(*pair.second);
-        ss << enumeration32(enum_type, tabs);
-    }
-    // Consts
-    for (const auto& pair : module_.constants_)
-    {
-        if (!module_.is_const_from_enum(pair.first)) // Don't add as const the "fake" enumeration consts.
-        {
-            ss << std::string(tabs * 4, ' ') << "const " << type_name(pair.second.type()) << " " << pair.first
-               << " = " << get_const_value(pair.second) << ";" << std::endl;
-        }
-    }
-    // Unions
-    for (const auto& pair : module_.unions_)
-    {
-        const UnionType& union_type = static_cast<const UnionType&>(*pair.second);
-        ss << generate_union(union_type, tabs);
-    }
-    // Structs
-    for (const auto& pair : module_.structs_)
-    {
-        const StructType& struct_type = static_cast<const StructType&>(*pair.second);
-        ss << structure(struct_type, tabs);
-    }
-    // Submodules
-    for (const auto& pair : module_.inner_)
-    {
-        const Module& inner_module = *pair.second;
-        ss << std::string(tabs * 4, ' ') << "module " << inner_module.name() << std::endl;
-        ss << std::string(tabs * 4, ' ') << "{" << std::endl;
-        ss << module_contents(inner_module, tabs + 1);
-        ss << std::string(tabs * 4, ' ') << "};" << std::endl;
-    }
-
-    return ss.str();
-}
-
-inline std::string module(const Module& module, size_t tabs = 0)
-{
-    std::stringstream ss;
-
-    // Check if it is root
-    if (module.name().empty())
-    {
-        ss << module_contents(module);
-    }
-    else
-    {
-        ss << std::string(tabs * 4, ' ') << "module " << module.name() << std::endl;
-        ss << std::string(tabs * 4, ' ') << "{" << std::endl;
-        ss << module_contents(module, tabs + 1);
-        ss << std::string(tabs * 4, ' ') << "};" << std::endl;
-    }
 
     return ss.str();
 }
