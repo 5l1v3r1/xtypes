@@ -28,27 +28,35 @@
 
 #include <sstream>
 
+#define dependencynode_assert(NODEPTR, KIND) \
+{\
+    xtypes_assert(NODEPTR->kind() == dependencytree::ModuleElementKind::KIND,\
+        "Trying to generate an IDL " << #KIND << " definition from a non-" << #KIND\
+        << " node (" << NODEPTR->name() << ").");\
+}
 namespace eprosima {
 namespace xtypes {
 namespace idl {
 namespace generator {
 
-inline std::string type_name(const DynamicType& type); //implementation below
-
-inline std::string sequence_type_name(const DynamicType& type)
+inline std::string sequence_type_name(
+        const dependencytree::DependencyNode* node,
+        const DynamicType& type)
 {
     assert(type.kind() == TypeKind::SEQUENCE_TYPE);
     const SequenceType& sequence_type = static_cast<const SequenceType&>(type);
     std::stringstream ss;
     ss << "sequence<";
-    ss << type_name(sequence_type.content_type());
+    ss << type_name(node, sequence_type.content_type());
     size_t bounds = sequence_type.bounds();
     ss << (bounds ? ", " + std::to_string(bounds) : "");
     ss << ">";
     return ss.str();
 }
 
-inline std::string map_type_name(const DynamicType& type)
+inline std::string map_type_name(
+        const dependencytree::DependencyNode* node,
+        const DynamicType& type)
 {
     assert(type.kind() == TypeKind::MAP_TYPE);
     const MapType& map_type = static_cast<const MapType&>(type);
@@ -56,7 +64,7 @@ inline std::string map_type_name(const DynamicType& type)
     size_t bounds = map_type.bounds();
     std::stringstream ss;
     ss << "map<";
-    ss << type_name(map_content.first()) << ", " << type_name(map_content.second());
+    ss << type_name(node, map_content.first()) << ", " << type_name(node, map_content.second());
     ss << (bounds ? ", " + std::to_string(bounds) : "");
     ss << ">";
     return ss.str();
@@ -76,7 +84,9 @@ inline std::vector<uint32_t> array_dimensions(const ArrayType& array)
     return dimensions;
 }
 
-inline std::string array_member(const Member& member)
+inline std::string array_member(
+        const dependencytree::DependencyNode* node,
+        const Member& member)
 {
     assert(member.type().kind() == TypeKind::ARRAY_TYPE);
     const DynamicType* type = &member.type();
@@ -89,11 +99,30 @@ inline std::string array_member(const Member& member)
     }
 
     std::stringstream ss;
-    ss << type_name(*type) << " " << member.name() << dimensions.str() << ";";
+    ss << type_name(node, *type) << " " << member.name() << dimensions.str() << ";";
     return ss.str();
 }
 
-inline std::string type_name(const DynamicType& type)
+inline std::string type_scope(
+        const dependencytree::DependencyNode* node,
+        const DynamicType& type)
+{
+    if (node == nullptr)
+    {
+        return std::string();
+    }
+    using namespace dependencytree;
+    const std::shared_ptr<DependencyModule>& from = node->from();
+
+    if (from->opts_for_dependency_setting(type) && !from->has_symbol(type.name(), false))
+    {
+        const std::shared_ptr<DependencyModule> dep_mod = from->search_module_with_node(type.name());
+        return from->relative_scope(dep_mod);
+    }
+    return std::string();
+}
+
+inline std::string type_name(const dependencytree::DependencyNode* node, const DynamicType& type)
 {
     static const std::map<TypeKind, std::string> mapping =
     {
@@ -113,29 +142,21 @@ inline std::string type_name(const DynamicType& type)
         { TypeKind::FLOAT_128_TYPE, "long double" },
     };
 
-    if(type.kind() == TypeKind::ALIAS_TYPE)
-    {
-        return static_cast<const AliasType&>(type).name();
-    }
     if(type.is_primitive_type())
     {
         return mapping.at(type.kind());
     }
-    else if(type.is_aggregation_type())
-    {
-        return type.name();
-    }
     else if(type.kind() == TypeKind::ARRAY_TYPE)
     {
-        return type_name(static_cast<const ArrayType&>(type).content_type());
+        return type_name(node, static_cast<const ArrayType&>(type).content_type());
     }
     else if(type.kind() == TypeKind::SEQUENCE_TYPE)
     {
-        return sequence_type_name(type);
+        return sequence_type_name(node, type);
     }
     else if(type.kind() == TypeKind::MAP_TYPE)
     {
-        return map_type_name(type);
+        return map_type_name(node, type);
     }
     else if(type.kind() == TypeKind::STRING_TYPE || type.kind() == TypeKind::WSTRING_TYPE)
     {
@@ -146,7 +167,18 @@ inline std::string type_name(const DynamicType& type)
     }
     else
     {
-        return type.name();
+        std::stringstream ss;
+        ss << generator::type_scope(node, type);
+
+        if (type.kind() == TypeKind::ALIAS_TYPE)
+        {
+            ss << static_cast<const AliasType&>(type).name();
+        }
+        else
+        {
+            ss << type.name();
+        }
+        return ss.str();
     }
 }
 
@@ -209,13 +241,20 @@ inline size_t inherit_members(const AggregationType& type)
     return 0;
 }
 
-inline std::string structure(const StructType& type, size_t tabs)
+inline std::string structure(
+        const StructType& type, size_t tabs,
+        const dependencytree::DependencyNode* struct_node)
 {
+    if (struct_node)
+    {
+        dependencynode_assert(struct_node, STRUCT);
+    }
+
     std::stringstream ss;
     ss << std::string(tabs * 4, ' ') << "struct " << type.name();
     if (type.has_parent())
     {
-        ss << " : " << type.parent().name();
+        ss << " : " << generator::type_scope(struct_node, type.parent()) << type.parent().name();
     }
     ss << std::endl << std::string(tabs * 4, ' ') << "{" << std::endl;
 
@@ -225,11 +264,11 @@ inline std::string structure(const StructType& type, size_t tabs)
         ss << std::string((tabs + 1) * 4, ' ');
         if(member.type().kind() == TypeKind::ARRAY_TYPE)
         {
-            ss << generator::array_member(member); //Spetial member syntax
+            ss << generator::array_member(struct_node, member); //Special member syntax
         }
         else
         {
-            ss << generator::type_name(member.type()) << " " << member.name() << ";";
+            ss << generator::type_name(struct_node, member.type()) << " " << member.name() << ";";
         }
         ss << std::endl;
     }
@@ -237,11 +276,14 @@ inline std::string structure(const StructType& type, size_t tabs)
     return ss.str();
 }
 
-inline std::string generate_union(const UnionType& type, size_t tabs)
+inline std::string generate_union(const dependencytree::DependencyNode* union_node, size_t tabs)
 {
+    dependencynode_assert(union_node, UNION);
+    const UnionType& type = static_cast<const UnionType&>(union_node->type());
+
     std::stringstream ss;
     ss << std::string(tabs * 4, ' ') << "union " << type.name()
-       << " switch (" << generator::type_name(type.discriminator()) << ")" << std::endl;
+       << " switch (" << generator::type_name(union_node, type.discriminator()) << ")" << std::endl;
 
     ss << std::string(tabs * 4, ' ') << "{" << std::endl;
 
@@ -263,11 +305,11 @@ inline std::string generate_union(const UnionType& type, size_t tabs)
         ss << std::string((tabs + 2) * 4, ' ');
         if(member.type().kind() == TypeKind::ARRAY_TYPE)
         {
-            ss << generator::array_member(member); //Spetial member syntax
+            ss << generator::array_member(union_node, member); //Special member syntax
         }
         else
         {
-            ss << generator::type_name(member.type()) << " " << member.name() << ";";
+            ss << generator::type_name(union_node, member.type()) << " " << member.name() << ";";
         }
         ss << std::endl;
     }
@@ -275,10 +317,14 @@ inline std::string generate_union(const UnionType& type, size_t tabs)
     return ss.str();
 }
 
-inline std::string aliase(const DynamicType& type, const std::string& name)
+inline std::string aliase(
+        const dependencytree::DependencyNode* alias_node,
+        const DynamicType& type,
+        const std::string& name)
 {
+    dependencynode_assert(alias_node, ALIAS);
     std::stringstream ss;
-    ss << "typedef " << generator::type_name(type) << " " << name;
+    ss << "typedef " << generator::type_name(alias_node, type) << " " << name;
     if (type.kind() == TypeKind::ARRAY_TYPE)
     {
         std::vector<uint32_t> array_dims = array_dimensions(static_cast<const ArrayType&>(type));
