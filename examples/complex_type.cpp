@@ -1,7 +1,6 @@
 #include <xtypes/xtypes.hpp>
 #include <xtypes/Module.hpp>
-// #include <xtypes/idl/dependencytree.hpp>
-// #include <xtypes/idl/dependencytree_new.hpp>
+
 #include <iostream>
 
 using namespace eprosima::xtypes;
@@ -9,41 +8,17 @@ using namespace eprosima::xtypes;
 int main()
 {
     std::string idl_spec = R"(
-        struct XInnerType
+        struct InnerType
         {
             uint32 im1;
             float im2;
         };
-        enum RootEnum
-        {
-            VALUE_1,
-            VALUE_2,
-            VALUE_3,
-            VALUE_4
-        };
-        union MyUnion switch (RootEnum)
-        {
-            case VALUE_1:
-            case VALUE_2:
-                XInnerType union_struct;
-            case VALUE_3:
-                uint32 union_uint32;
-            case VALUE_4:
-            default:
-                float union_float;
-        };
     )";
 
     idl::Context context = idl::parse(idl_spec);
-    const StructType& inner = context.module().structure("XInnerType");
-    const UnionType& my_union = context.module().union_switch("MyUnion");
-    EnumerationType<uint32_t>& root_enum = context.module().enum_32("RootEnum");
+    const StructType& inner = context.module().structure("InnerType");
 
     AliasType abool(primitive_type<bool>(), "bool");
-    StructType another("AnotherType");
-    another.add_member(Member("am0", primitive_type<uint8_t>()).id(2));
-    another.add_member(Member("am1", primitive_type<uint16_t>()).id(45));
-    another.add_member("am2", root_enum);
     StructType outer("OuterType");
     outer.add_member(Member("om1", primitive_type<double>()).id(2));
     outer.add_member("om2", inner);
@@ -57,7 +32,6 @@ int main()
     outer.add_member("om10", ArrayType(ArrayType(primitive_type<uint32_t>(), 2), 3));
     outer.add_member("om11", abool);
     outer.add_member("om12", MapType(StringType(), inner));
-    outer.add_member("om13", another);
 
     std::cout << idl::generate(inner) << std::endl;
     std::cout << idl::generate(outer) << std::endl;
@@ -76,7 +50,7 @@ int main()
     data["om6"][0] = data["om2"];                          //...
     data["om7"][1] = 123u;                                 //ArrayType(PrimitiveType<uint32_t>)
     data["om8"][1] = data["om2"];                          //ArrayType(inner)
-    // data["om11"] = true;                                   //AliasType(PrimitiveType<bool>))
+    data["om11"] = true;                                   //AliasType(PrimitiveType<bool>))
     StringType str_type;
     DynamicData map_key(str_type);
     map_key = "first";
@@ -90,23 +64,18 @@ int main()
     Module root;
     Module& submod_a = root.create_submodule("a");
     Module& submod_b = root.create_submodule("b");
-    Module& submod_aa = submod_a.create_submodule("c");
-    //submod_a.structure(outer);
-    //submod_b.structure(inner);
+    Module& submod_aa = submod_a.create_submodule("a");
     root.structure(inner);
-    submod_b.union_switch(my_union);
     submod_aa.structure(outer);
-    root.enum_32(std::move(root_enum));
 
-    submod_a.structure(another);
     std::cout << std::boolalpha;
-    std::cout << "Does a::a::OuterType exists?: " << root.has_structure("a::c::OuterType") << std::endl;
-    std::cout << "Does ::XInnerType exists?: " << root.has_structure("::XInnerType") << std::endl;
-    std::cout << "Does XInnerType exists?: " << root.has_structure("XInnerType") << std::endl;
+    std::cout << "Does a::a::OuterType exists?: " << root.has_structure("a::a::OuterType") << std::endl;
+    std::cout << "Does ::InnerType exists?: " << root.has_structure("::InnerType") << std::endl;
+    std::cout << "Does InnerType exists?: " << root.has_structure("InnerType") << std::endl;
     std::cout << "Does OuterType exists?: " << root.has_structure("OuterType") << std::endl;
 
-    //DynamicData module_data(root["b"].structure("XInnerType")); // ::a::a::OuterType
-    //module_data["om3"] = "This is a string.";
+    DynamicData module_data(root["a"]["a"].structure("OuterType")); // ::a::a::OuterType
+    module_data["om3"] = "This is a string.";
 
     EnumerationType<uint32_t> my_enum("MyEnum");
     my_enum.add_enumerator("A", 0);
@@ -132,18 +101,7 @@ int main()
     my_const = 555ul;
     root.create_constant("MyConst", my_const);
     root.add_alias(abool);
-
-    // ModuleTree test
-   // std::cout << "ModuleTree test: " << std::endl;
-    //idl::dependencytree::DependencyTree tree(root);
-    // idl::dependencytree::ModuleTree test(root);
-    std::cout << std::endl << "Current generator: " << std::endl << std::endl;
-
-    std::string gen_idl = idl::generate(root);
-    std::cout << gen_idl << std::endl;
-
-    std::cout << "now, parse again to check..." << std::endl;
-    idl::Context context2 = idl::parse(gen_idl);
+    std::cout << idl::generate(root) << std::endl;
 
     // EnumerationType<uint64_t> my_long_enum("MyLongEnum"); // Static assert, uint64_t isn't allowed
     // enum_data2 = static_cast<uint32_t>(2); // Asserts because 2 isn't a valid value (0, 10 and 11).

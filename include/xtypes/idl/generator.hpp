@@ -40,7 +40,7 @@ namespace idl {
 namespace generator {
 
 inline std::string sequence_type_name(
-        dependencytree::DependencyNode* node,
+        const dependencytree::DependencyNode* node,
         const DynamicType& type)
 {
     assert(type.kind() == TypeKind::SEQUENCE_TYPE);
@@ -55,7 +55,7 @@ inline std::string sequence_type_name(
 }
 
 inline std::string map_type_name(
-        dependencytree::DependencyNode* node,
+        const dependencytree::DependencyNode* node,
         const DynamicType& type)
 {
     assert(type.kind() == TypeKind::MAP_TYPE);
@@ -85,7 +85,7 @@ inline std::vector<uint32_t> array_dimensions(const ArrayType& array)
 }
 
 inline std::string array_member(
-        dependencytree::DependencyNode* node,
+        const dependencytree::DependencyNode* node,
         const Member& member)
 {
     assert(member.type().kind() == TypeKind::ARRAY_TYPE);
@@ -104,7 +104,7 @@ inline std::string array_member(
 }
 
 inline std::string type_scope(
-        dependencytree::DependencyNode* node,
+        const dependencytree::DependencyNode* node,
         const DynamicType& type)
 {
     if (node == nullptr)
@@ -112,17 +112,17 @@ inline std::string type_scope(
         return std::string();
     }
     using namespace dependencytree;
-    DependencyModule* from = node->from();
+    const std::shared_ptr<DependencyModule>& from = node->from();
 
     if (from->opts_for_dependency_setting(type) && !from->has_symbol(type.name(), false))
     {
-        const DependencyModule* dep_mod = from->search_module_with_node(type.name());
+        const std::shared_ptr<DependencyModule> dep_mod = from->search_module_with_node(type.name());
         return from->relative_scope(dep_mod);
     }
     return std::string();
 }
 
-inline std::string type_name(dependencytree::DependencyNode* node, const DynamicType& type)
+inline std::string type_name(const dependencytree::DependencyNode* node, const DynamicType& type)
 {
     static const std::map<TypeKind, std::string> mapping =
     {
@@ -243,7 +243,7 @@ inline size_t inherit_members(const AggregationType& type)
 
 inline std::string structure(
         const StructType& type, size_t tabs,
-        dependencytree::DependencyNode* struct_node)
+        const dependencytree::DependencyNode* struct_node)
 {
     if (struct_node)
     {
@@ -276,7 +276,7 @@ inline std::string structure(
     return ss.str();
 }
 
-inline std::string generate_union(dependencytree::DependencyNode* union_node, size_t tabs)
+inline std::string generate_union(const dependencytree::DependencyNode* union_node, size_t tabs)
 {
     dependencynode_assert(union_node, UNION);
     const UnionType& type = static_cast<const UnionType&>(union_node->type());
@@ -318,7 +318,7 @@ inline std::string generate_union(dependencytree::DependencyNode* union_node, si
 }
 
 inline std::string aliase(
-        dependencytree::DependencyNode* alias_node,
+        const dependencytree::DependencyNode* alias_node,
         const DynamicType& type,
         const std::string& name)
 {

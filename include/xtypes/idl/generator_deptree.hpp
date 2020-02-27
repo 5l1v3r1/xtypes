@@ -37,19 +37,19 @@ class DependencyModule;
 
 // Forward declarations from "generator.hpp". Allows user to just include
 // "idl/generator.hpp" and forget about this file.
-inline std::string aliase(dependencytree::DependencyNode* alias_node,
+inline std::string aliase(const dependencytree::DependencyNode* alias_node,
                           const DynamicType& type, const std::string& name);
 
-inline std::string type_name(dependencytree::DependencyNode* node, const DynamicType& type);
+inline std::string type_name(const dependencytree::DependencyNode* node, const DynamicType& type);
 
 inline std::string get_const_value(ReadableDynamicDataRef data);
 
 inline std::string enumeration32(const EnumerationType<uint32_t>& enumeration, size_t tabs = 0);
 
 inline std::string structure(const StructType& type, size_t tabs = 0,
-                             dependencytree::DependencyNode* struct_node = nullptr);
+                             const dependencytree::DependencyNode* struct_node = nullptr);
 
-inline std::string generate_union(dependencytree::DependencyNode* union_node, size_t tabs = 0);
+inline std::string generate_union(const dependencytree::DependencyNode* union_node, size_t tabs = 0);
 
 namespace dependencytree {
 
@@ -80,18 +80,16 @@ public:
     using NodeRefSet = std::vector<std::reference_wrapper<DependencyNode>>;
 
     /// \brief Construct a DependencyNode
-    /// \param[in] from The DependencyModule this object belongs to.
     /// \param[in] node A key, value pair representing some Module's content element
     /// \param[in] kind Module's content element kind (rvalue)
     DependencyNode(
-            DependencyModule* from,
+            const std::shared_ptr<DependencyModule>& from,
             const ModuleElement& node,
             const ModuleElementKind&& kind)
         : from_(from)
         , node_(node)
         , kind_(std::move(kind))
         , iterated_(false)
-        , parent_module_(nullptr)
         , child_module_(nullptr)
     {}
 
@@ -105,14 +103,7 @@ public:
 
     /// \brief Gets the DependencyModule which contains this DependencyNode.
     /// \returns A const pointer to the DependencyModule this object comes from.
-    const DependencyModule* from() const
-    {
-        return from_;
-    }
-
-    /// \brief Gets the DependencyModule which contains this DependencyNode.
-    /// \returns A non-const pointer to the DependencyModule this object comes from.
-    DependencyModule* from()
+    const std::shared_ptr<DependencyModule>& from() const
     {
         return from_;
     }
@@ -154,7 +145,7 @@ public:
         return ancestors_;
     }
 
-    /// \brief Set a new ancestor for this DependencyNode.
+    /// \brief Set a nwe ancestor for this DependencyNode.
     /// \pre New ancestor is not added if it already exists.
     /// \param[in] ancestor New ancestor to be set.
     void set_ancestor(DependencyNode& ancestor)
@@ -177,17 +168,17 @@ public:
     }
 
     /// \brief Ask this DependencyNode if its child module dependency is an specific one.
-    /// \param[in] child A pointer to the DependencyModule to be compared with the inner one.
+    /// \param[in] child DependencyModule to be compared with the inner one.
     /// \returns The boolean result of the comparison.
     bool has_child_module(
-            const DependencyModule* child) const
+            const std::shared_ptr<DependencyModule>& child) const
     {
         return child_module_ == child;
     }
 
     /// \brief Get this node's child DependencyModule.
-    /// \returns A const pointer to the child module.
-    const DependencyModule* child_module() const
+    /// \returns A constant reference to the child module.
+    const std::shared_ptr<DependencyModule>& child_module() const
     {
         return child_module_;
     }
@@ -195,7 +186,7 @@ public:
     /// \brief Set the child module pointer to an specific value.
     /// \param[in] child_module DependencyModule to be set.
     void set_child_module(
-            DependencyModule* child_module)
+            const std::shared_ptr<DependencyModule>& child_module)
     {
         child_module_ = child_module;
     }
@@ -208,15 +199,8 @@ public:
     }
 
     /// \brief Get this node's parent DependencyModule.
-    /// \returns A const pointer to the parent module.
-    const DependencyModule* parent_module() const
-    {
-        return parent_module_;
-    }
-
-    /// \brief Get this node's parent DependencyModule.
-    /// \returns A non-const pointer to the parent module.
-    DependencyModule* parent_module()
+    /// \returns A constant reference to the parent module.
+    const std::shared_ptr<DependencyModule>& parent_module() const
     {
         return parent_module_;
     }
@@ -224,7 +208,7 @@ public:
     /// \brief Set the parent module pointer to an specific value.
     /// \param[in] parent_module DependencyModule to be set.
     void set_parent_module(
-            DependencyModule* parent_module)
+            const std::shared_ptr<DependencyModule>& parent_module)
     {
         parent_module_ = parent_module;
     }
@@ -314,37 +298,33 @@ public:
 
 private:
 
-    DependencyModule* from_;
+    const std::shared_ptr<DependencyModule> from_;
     const ModuleElement& node_;
     const ModuleElementKind kind_;
     bool iterated_;
     NodeRefSet ancestors_;
-    DependencyModule* child_module_;
-    DependencyModule* parent_module_;
+    std::shared_ptr<DependencyModule> child_module_;
+    std::shared_ptr<DependencyModule> parent_module_;
 };
 
 /// \brief Class to set and store hierarchical relationships between Module objects.
-class DependencyModule : public Module
+class DependencyModule : public Module, public std::enable_shared_from_this<DependencyModule>
 {
 public:
 
     using ModuleSet = std::vector<std::shared_ptr<DependencyModule>>;
-    using ModuleRefSet = std::vector<std::weak_ptr<DependencyModule>>;
     using NodeSet = std::vector<DependencyNode>;
 
     /// \brief Construct a new DependencyModule object.
-    /// \param[in] d_root Reference to root DependencyModule in this tree.
     /// \param[in] module The Module object from which this objects inherits.
     /// \param[in] outer A pointer to its outer DependencyModule. Here, "outer" does not
     /// mean a hierarchically precedent DependencyModule to be printed before this in the
     /// generated IDL file, but is a pointer to this Module's outer scoped Module object;
     /// e.g. "this" is a submodule of "outer" (same as with Module class outer_ pointer)
     DependencyModule(
-            const std::shared_ptr<DependencyModule>& d_root,
             const Module& module,
-            DependencyModule* outer)
+            const std::shared_ptr<DependencyModule>& outer)
         : Module(module)
-        , d_root_(d_root)
         , d_outer_(outer)
         ,iterated_(false)
     {}
@@ -365,14 +345,12 @@ public:
     }
 
     /// \brief Get this DependencyModule's DependencyNode set.
-    /// \returns A const reference to the NodeSet.
+    /// \returns A reference to the NodeSet.
     const NodeSet& node_set() const
     {
         return node_set_;
     }
 
-    /// \brief Get this DependencyModule's DependencyNode set.
-    /// \returns A non-const reference to the NodeSet.
     NodeSet& node_set()
     {
         return node_set_;
@@ -415,16 +393,9 @@ public:
         return d_outer_ != nullptr;
     }
 
-    /// \brief Get this DependencyModule's outer DependencyModule pointer.
-    /// \returns A const pointer to the outer DependencyModule.
-    const DependencyModule* outer() const
-    {
-        return d_outer_;
-    }
-
-    /// \brief Get this DependencyModule's outer DependencyModule pointer.
-    /// \returns A non-const pointer to the outer DependencyModule.
-    DependencyModule* outer()
+    /// \brief Get a reference to this DependencyModule's outer DependencyModule pointer.
+    /// \returns A pointer to the outer DependencyModule.
+    const std::shared_ptr<DependencyModule>& outer() const
     {
         return d_outer_;
     }
@@ -434,7 +405,7 @@ public:
     /// \param[in] outer The DependencyModule whose existance in outer scopes wants to be checked.
     /// \returns Boolean value indicating if any outer DependencyModule in this branch matches the provided one.
     bool has_outer(
-            const DependencyModule* outer) const
+            const std::shared_ptr<DependencyModule>& outer) const
     {
         if (has_outer())
         {
@@ -450,12 +421,18 @@ public:
 
     /// \brief Get a pointer to the outermost scoped DependencyModule in the module tree.
     /// returns The outermost DependencyModule in the tree.
-    inline DependencyModule* outer_root()
+    std::shared_ptr<DependencyModule> outer_root()
     {
-        return d_root_.get();
+        if (has_outer())
+        {
+            return d_outer_->outer_root();
+        }
+
+        return shared_from_this();
     }
 
-    using DepModulesPair = std::pair<DependencyModule*, DependencyModule*>;
+    using DepModulesPair = std::pair<std::shared_ptr<DependencyModule>,
+                                     std::shared_ptr<DependencyModule>>;
 
     /// \brief Find common outer DependencyModule objects siblings between this one and another.
     /// "Siblings" means that they have a common outer module. For example:
@@ -465,15 +442,15 @@ public:
     /// \param[in] dep DependencyModule to find a common outer with.
     /// \returns A pair of sibling DependencyModules.
     DepModulesPair find_outer_siblings(
-            const DependencyModule* dep)
+            const std::shared_ptr<DependencyModule>& dep)
     {
         xtypes_assert(has_outer(), "Cannot use 'find_common_outer()' in root node.");
 
-        DependencyModule* inner_dep = d_outer_->has_inner(dep);
+        const std::shared_ptr<DependencyModule>& inner_dep = d_outer_->has_inner(dep);
 
         if (inner_dep != nullptr)
         {
-            return DepModulesPair(this, inner_dep);
+            return DepModulesPair(shared_from_this(), inner_dep);
         }
         else
         {
@@ -492,36 +469,32 @@ public:
     /// If recursive flag is set, it will look through its whole subtree.
     /// \param[in] module DependencyModule to search for.
     /// \param[in] recurse Go deep through the whole level (default), or just one level
-    /// \returns Const pointer to inner module which matches (or contains) the one provided as parameter.
-    const DependencyModule* has_inner(
-            const DependencyModule* module,
+    /// \returns Pointer to inner module which matches (or contains) the one provided as parameter.
+    const std::shared_ptr<DependencyModule> has_inner(
+            const std::shared_ptr<DependencyModule>& module,
             bool recurse=true) const
     {
         for (const auto& inner : d_inner_)
         {
-            if (inner.get() == module || (recurse && inner->has_inner(module)))
+            if (inner == module || (recurse && inner->has_inner(module)))
             {
-                return inner.get();
+                return inner;
             }
         }
 
         return nullptr;
     }
 
-    /// \brief Check if this DependencyModule has a certain module as inner.
-    /// If recursive flag is set, it will look through its whole subtree.
-    /// \param[in] module DependencyModule to search for.
-    /// \param[in] recurse Go deep through the whole level (default), or just one level
-    /// \returns Non-const pointer to inner module which matches (or contains) the one provided as parameter.
-    DependencyModule* has_inner(
-            const DependencyModule* module,
+    /// \brief Non-const version of "has_inner" method defined above.
+    std::shared_ptr<DependencyModule> has_inner(
+            const std::shared_ptr<DependencyModule>& module,
             bool recurse=true)
     {
         for (auto& inner : d_inner_)
         {
-            if (inner.get() == module || (recurse && inner->has_inner(module)))
+            if (inner == module || (recurse && inner->has_inner(module)))
             {
-                return inner.get();
+                return inner;
             }
         }
 
@@ -530,10 +503,9 @@ public:
 
     /// \brief Add an inner DependencyModule to the inner list.
     /// \param[in] inner Reference to the new inner DependencyModule.
-    void set_inner(
-            const std::shared_ptr<DependencyModule>&& inner)
+    void set_inner(const std::shared_ptr<DependencyModule>& inner)
     {
-        d_inner_.emplace_back(std::move(inner));
+        d_inner_.push_back(inner);
     }
 
     /// \brief Check if this DependencyModule has any ancestors.
@@ -545,7 +517,7 @@ public:
 
     /// \brief Get a list of ancestors for this DependencyModule.
     /// \returns A const reference to the ancestors container.
-    const ModuleRefSet& ancestors() const
+    const ModuleSet& ancestors() const
     {
         return ancestors_;
     }
@@ -554,18 +526,12 @@ public:
     /// will be added only if it didn't exist before.
     /// param[in] ancestor New DependencyModule to be set as ancestor.
     void set_ancestor(
-            DependencyModule* ancestor)
+            const std::shared_ptr<DependencyModule>& ancestor)
     {
-        for (const auto& ancestor_ : ancestors_)
+        if (std::find(ancestors_.begin(), ancestors_.end(), ancestor) == ancestors_.end())
         {
-            if (ancestor_.lock().get() == ancestor)
-            {
-                return;
-            }
+            ancestors_.push_back(ancestor);
         }
-
-        std::weak_ptr<DependencyModule> new_ancestor = search_module_in_tree(ancestor);
-        ancestors_.emplace_back(std::move(new_ancestor));
     }
 
     /// \brief Set a hierarchical ancestor. This implies:
@@ -573,7 +539,7 @@ public:
     /// - Searching for common outer siblings (read 'find_outer_siblings' doc).
     /// \param[in] ancestor The DependencyModule to be set as ancestor.
     void set_hierarchical_ancestor(
-            const DependencyModule* ancestor)
+            const std::shared_ptr<DependencyModule>& ancestor)
     {
         if (!has_outer(ancestor))
         {
@@ -586,7 +552,7 @@ public:
     {\
         for (const auto& node : SET)\
         {\
-            node_set_.emplace_back(DependencyNode(this, node, ModuleElementKind::KIND));\
+            node_set_.emplace_back(DependencyNode(shared_from_this(), node, ModuleElementKind::KIND));\
         }\
     }
 
@@ -600,53 +566,20 @@ public:
         ADD_INTO_DEPENDENCY_SET(unions_, UNION);
     }
 
-    /// \brief Looks for an specific module in the shared_ptr tree, given its pointer.
-    /// \param[in] module DependencyModule to look for.
-    /// \param[in] from_root Trigger first call from root node.
-    /// \returns A weak_ptr to the DependencyModule.
-    std::weak_ptr<DependencyModule> search_module_in_tree(
-            DependencyModule* module,
-            bool from_root=true)
-    {
-        if (from_root)
-        {
-            if (d_root_.get() == module)
-            {
-                return std::weak_ptr<DependencyModule>(d_root_);
-            }
-            else
-            {
-                d_root_->search_module_in_tree(module, false);
-            }
-        }
-        else
-        {
-            for (const auto& inner : d_inner_)
-            {
-                if (inner.get() == module)
-                {
-                    return std::weak_ptr<DependencyModule>(inner);
-                }
-
-                inner->search_module_in_tree(module, false);
-            }
-        }
-    }
-
     /// \brief Given a DependencyNode's name, search for it through the DependencyModule tree.
     /// \param[in] name Name of the DependencyNode to be found.
     /// \param[in] from_search Reference to DependencyModule that triggered the search. It will
     /// be set as a child DependencyModule of the found DependencyNode, if it is not nullptr.
     /// \param[in] from_root Start search from DependencyModule's tree root.
     /// \returns A pointer to the found DependencyModule.
-    DependencyModule* search_module_with_node(
+    const std::shared_ptr<DependencyModule> search_module_with_node(
             const std::string& name,
-            DependencyModule* from_search=nullptr,
+            const std::shared_ptr<DependencyModule>& from_search=nullptr,
             bool from_root=true)
     {
         if (from_root)
         {
-            DependencyModule* res =
+            const std::shared_ptr<DependencyModule> res =
                 outer_root()->search_module_with_node(name, from_search, false);
             xtypes_assert(res != nullptr,
                 "Could not find module containing dependency named '" << name << "'.");
@@ -663,13 +596,13 @@ public:
                         node.set_child_module(from_search);
                     }
 
-                    return this;
+                    return shared_from_this();
                 }
             }
 
             for (const auto& inner : d_inner_)
             {
-                DependencyModule* found;
+                std::shared_ptr<DependencyModule> found;
                 found = inner->search_module_with_node(name, from_search, false);
 
                 if (found != nullptr)
@@ -714,10 +647,11 @@ public:
         }
         else
         {
-            DependencyModule* dep_mod = search_module_with_node(master, this);
+            const std::shared_ptr<DependencyModule>&
+                dep_mod = search_module_with_node(master, shared_from_this());
 
             // Check if found module is a submodule of this one
-            DependencyModule* is_submod = has_inner(dep_mod);
+            const std::shared_ptr<DependencyModule> is_submod = has_inner(dep_mod);
 
             if (is_submod != nullptr)
             {
@@ -834,9 +768,9 @@ public:
     /// \param[in] other The DependencyModule whose scope wants to be resolved against this one.
     /// \returns Relative scope between the two modules.
     std::string relative_scope(
-            const DependencyModule* other)
+            const std::shared_ptr<DependencyModule>& other)
     {
-        if (other == this)
+        if (other.get() == this)
         {
             return std::string();
         }
@@ -849,7 +783,7 @@ public:
         }
         else if (has_inner(other) != nullptr)
         {
-            DependencyModule* inner = has_inner(other);
+            std::shared_ptr<DependencyModule> inner = has_inner(other);
 
             while (inner != other)
             {
@@ -875,7 +809,7 @@ public:
     /// \returns An string with the generated IDL sentence, if node belongs to this module.
     std::string generate_idl_sentence(
             DependencyNode& node,
-            unsigned int tabs) const
+            unsigned int tabs)
     {
         if (std::find(node_set_.begin(), node_set_.end(), node) != node_set_.end())
         {
@@ -894,7 +828,7 @@ public:
     /// \returns An string with the generated IDL.
     std::string generate_idl_module(
             unsigned int tabs=0,
-            const DependencyModule* is_child=nullptr)
+            const std::shared_ptr<DependencyModule>& is_child=nullptr)
     {
         std::stringstream ss;
 
@@ -937,10 +871,9 @@ public:
 private:
 
     bool iterated_;
-    const std::shared_ptr<DependencyModule>& d_root_;
-    DependencyModule* d_outer_;
+    const std::shared_ptr<DependencyModule> d_outer_;
     ModuleSet d_inner_;
-    ModuleRefSet ancestors_;
+    ModuleSet ancestors_;
     NodeSet node_set_;
 };
 
@@ -954,38 +887,55 @@ public:
     ModuleDependencyTree(
             const Module& root)
     {
-        dep_root_ = std::make_shared<DependencyModule>(dep_root_, root, nullptr);
-        create_module_dep_tree(dep_root_.get());
-        solve_dependency_tree(dep_root_.get());
+        dep_root_ = create_module_dep_tree(root);
+        create_dependencies(dep_root_);
+        solve_dependency_tree(dep_root_);
     }
 
     /// \brief Create DependencyModule tree from root node.
+    /// \param[in] module Current position in the tree.
     /// \param[in] outer DependencyModule to be set as outer during construction of
     /// new DependencyModule objects.
-    void create_module_dep_tree(
-            DependencyModule* outer) const
+    /// \returns A pointer to the resulting DependencyModule for provided 'module' parameter.
+    std::shared_ptr<DependencyModule> create_module_dep_tree(
+            const Module& module,
+            const std::shared_ptr<DependencyModule>& outer=nullptr) const
     {
-        outer->create_dependency_set();
+        std::shared_ptr<DependencyModule> dep =
+            std::make_shared<DependencyModule>(DependencyModule(module, outer));
 
-        outer->for_each_submodule([&](const Module& submod)
+        module.for_each_submodule([&](const Module& submod)
         {
-            std::shared_ptr<DependencyModule> child =
-                std::make_shared<DependencyModule>(dep_root_, submod, outer);
-            create_module_dep_tree(child.get());
-            outer->set_inner(std::move(child));
+            std::shared_ptr<DependencyModule> child = create_module_dep_tree(submod, dep);
+            dep->set_inner(child);
         }, false);
+
+        return dep;
+    }
+
+    /// \brief Creates DependencyNode set for each module in the subtree.
+    /// \param[in] dep_mod the DependencyModule root node of the module tree.
+    void create_dependencies(
+            const std::shared_ptr<DependencyModule>& dep_mod) const
+    {
+        dep_mod->create_dependency_set();
+
+        for (const auto& inner : dep_mod->inner())
+        {
+            this->create_dependencies(inner);
+        }
     }
 
     /// \brief Solve dependency tree between DependencyModule objects.
     /// \param[in] dep_mod the DependencyModule whose dependencies wants to be solved.
     void solve_dependency_tree(
-            DependencyModule* dep_mod) const
+            const std::shared_ptr<DependencyModule>& dep_mod) const
     {
         dep_mod->solve_dependency_tree();
 
         for (const auto& inner : dep_mod->inner())
         {
-            this->solve_dependency_tree(inner.get());
+            this->solve_dependency_tree(inner);
         }
     }
 
@@ -994,7 +944,7 @@ public:
     /// \param[in] tabs Padding relative to module's scope.
     /// \returns A string representing IDL definition for the given module.
     std::string generate_idl(
-            DependencyModule* dep_mod,
+            const std::shared_ptr<DependencyModule>& dep_mod,
             unsigned int tabs=0) const
     {
         if (dep_mod->iterated())
@@ -1010,15 +960,14 @@ public:
         {
             for (const auto& ancestor : dep_mod->ancestors())
             {
-                DependencyModule* p_ancestor = ancestor.lock().get();
-                ss << dep_mod->generate_idl_module(root ? 0 : tabs, p_ancestor);
-                ss << generate_idl(p_ancestor, root ? 0 : tabs);
+                ss << dep_mod->generate_idl_module(root ? 0 : tabs, ancestor);
+                ss << generate_idl(ancestor, root ? 0 : tabs);
             }
         }
 
         if (dep_mod->has_outer())
         {
-            DependencyModule* outer = dep_mod->outer();
+            const std::shared_ptr<DependencyModule>& outer = dep_mod->outer();
             for (auto& onode : outer->node_set())
             {
                 if (onode.has_child_module(dep_mod))
@@ -1039,7 +988,7 @@ public:
             ss << std::string(4 * tabs, ' ') << "{" << std::endl;
         }
 
-        for (auto& node : dep_mod->node_set())
+        for (const auto& node : dep_mod->node_set())
         {
             if (node.has_parent_module())
             {
@@ -1052,7 +1001,7 @@ public:
         // Iterate over inner DependencyModule list
         for (const auto& inner : dep_mod->inner())
         {
-            ss << generate_idl(inner.get(), root ? 0 : tabs + 1);
+            ss << generate_idl(inner, root ? 0 : tabs + 1);
 
             if (!dep_mod->all_inner_iterated())
             {
@@ -1074,7 +1023,7 @@ public:
     /// \returns A string representing IDL definition for root Module.
     inline std::string generate_idl() const
     {
-        return generate_idl(dep_root_.get());
+        return generate_idl(dep_root_);
     }
 
 private:
