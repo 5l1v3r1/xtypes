@@ -294,7 +294,7 @@ TEST (IDLGenerator, roundtrip)
     std::string gen_idl = generator::module(context.module());
 
     // Debug
-    // std::cout << gen_idl << std::endl;
+    std::cout << gen_idl << std::endl;
 
     // Parse the generated IDL and check again.
     Context result = parse(gen_idl);
