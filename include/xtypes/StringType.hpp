@@ -102,6 +102,11 @@ public:
     virtual TypeConsistency is_compatible(
             const DynamicType& other) const override
     {
+        if(other.kind() == TypeKind::ALIAS_TYPE)
+        {
+            other.is_compatible(*this);
+        }
+
         if(other.kind() != KIND)
         {
             return TypeConsistency::NONE;
