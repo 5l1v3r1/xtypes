@@ -82,6 +82,11 @@ public:
     virtual TypeConsistency is_compatible(
             const DynamicType& other) const override
     {
+        if (other.kind() == TypeKind::STRUCTURE_TYPE) // Resolve one-member structs
+        {
+            return other.is_compatible(*this);
+        }
+
         if (other.is_enumerated_type())
         {
             if (PrimitiveType<T>::memory_size() == other.memory_size())

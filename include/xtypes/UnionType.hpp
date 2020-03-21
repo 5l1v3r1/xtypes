@@ -335,6 +335,11 @@ public:
     virtual TypeConsistency is_compatible(
             const DynamicType& other) const override
     {
+        if (other.kind() == TypeKind::STRUCTURE_TYPE) // Resolve one-member structs
+        {
+            return other.is_compatible(*this);
+        }
+
         if(other.kind() != TypeKind::UNION_TYPE)
         {
             return TypeConsistency::NONE;
